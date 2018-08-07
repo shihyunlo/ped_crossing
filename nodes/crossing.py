@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import sys
 sys.path.append('/home/slo/ws/src/ped_crossing/src')
+import poly_traj_generation
+from poly_traj_generation import PolyTrajGeneration
 
 import numpy as np
 import math
@@ -262,22 +264,6 @@ class PedCrossing :
             #vel_est[1,vel_count] = self.vy_
 
 
-            if vel_count== 0 :
-                self.rob_pos_old[0] = self.rob_pos[0]
-                self.rob_pos_old[1] = self.rob_pos[1]
-                self.ped_pos_old[0] = self.ped_pos[0]
-                self.ped_pos_old[1] = self.ped_pos[1]
-
-            if vel_count>=(vel_n-1) :
-                self.rob_vel = (self.rob_pos-self.rob_pos_old)/self.dt_mocap/vel_n
-                self.ped_vel = (self.ped_pos-self.ped_pos_old)/self.dt_mocap/vel_n
-                vel_count = 0
-		#print 'pos_old = {}'.format(pos_ped_old)
-		#print 'pos_new = {}'.format(self.ped_pos)
-		#print 'vh smoothed = {}'.format(np.linalg.norm(self.ped_vel))
-
-            vel_count = vel_count + 1
-
             pR = self.rob_pos
 	    vR = self.rob_vel
 	    pH = self.ped_pos
@@ -310,8 +296,9 @@ class PedCrossing :
                 vR_ = vR_*tbc_rob/(tbc_ped-self.timing_sm/self.vh)
 
                 if tbc_ped < self.rob_reaction_time :
-	            action, pplan, xtraj, ytraj, xvel, yvel = self.poly_traj_generation(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm)
-                    self.Xtraj = xtraj
+                    print '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}'.format(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
+	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGeneration(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
+		    self.Xtraj = xtraj
                     self.Ytraj = ytraj
                     self.Xvel = xvel
                     self.Yvel = yvel
@@ -337,6 +324,26 @@ class PedCrossing :
                 self.rob_pos[1] = self.y_pos_ref
                 self.ped_pos[0] += vH_[0]*self.dt
                 self.ped_pos[1] += vH_[1]*self.dt
+		self.rob_vel[0] = vR_[0]
+		self.rob_vel[1] = vR_[1]
+		self.ped_vel[0] = vH_[0]
+		self.ped_vel[1] = vH_[1]
+	    else :		
+            	if vel_count== 0 :
+                    self.rob_pos_old[0] = self.rob_pos[0]
+                    self.rob_pos_old[1] = self.rob_pos[1]
+                    self.ped_pos_old[0] = self.ped_pos[0]
+                    self.ped_pos_old[1] = self.ped_pos[1]
+
+                if vel_count>=(vel_n-1) :
+                    self.rob_vel = (self.rob_pos-self.rob_pos_old)/self.dt_mocap/vel_n
+                    self.ped_vel = (self.ped_pos-self.ped_pos_old)/self.dt_mocap/vel_n
+                    vel_count = 0
+		    #print 'pos_old = {}'.format(pos_ped_old)
+		    #print 'pos_new = {}'.format(self.ped_pos)
+		    print 'vH = {}'.format(self.ped_vel)
+
+            vel_count = vel_count + 1
 
             plt.cla()
             plt.axis('equal')
@@ -376,7 +383,8 @@ class PedCrossing :
 
             self.robot_poly_index += 1
             self.robot_time_del += self.dt
-            plt.pause(0.5)
+            plt.pause(0.05)
+	    #plt.hold
 
             rate.sleep()
 
