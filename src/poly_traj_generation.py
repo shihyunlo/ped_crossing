@@ -3,8 +3,8 @@ import numpy.linalg as linalg
 import sys
 import math as m
 
-def poly_traj_generation(self, rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj_duration, dt, time, reaction_time, max_accelx, max_accely, timing_sm, safety_sm, ped_goal, rob_goal, vh, vr, n_states):
-    if len(robot_intent)==0 :
+def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj_duration, dt, time, reaction_time, max_accelx, max_accely, timing_sm, safety_sm, ped_goal, rob_goal, vh, vr, n_states):
+    if rob_intent>1 :
         rob_intent = 0
 
     p1_goal_hat = ped_goal
@@ -17,7 +17,7 @@ def poly_traj_generation(self, rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,lo
     vR_ = (p2_goal_hat-pR)/linalg.norm(p2_goal_hat-pR)*vr_hat
     pH = ped_pos
     vH = ped_vel
-    vR_ = (p1_goal_hat-pH)/linalg.norm(p1_goal_hat-pH)*vh_hat
+    vH_ = (p1_goal_hat-pH)/linalg.norm(p1_goal_hat-pH)*vh_hat
 
     p_rel = -pR+pH
     A = np.zeros((2,2))
@@ -44,12 +44,12 @@ def poly_traj_generation(self, rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,lo
     rx = (max_accelx-x_sampled_accel_lower_bound)/delta_accel
     rx = int(m.floor(rx))
 
-    x_sampled_accel = x_sampled_accel_lower_bound+range(0,rx)*delta_accel
+    x_sampled_accel = x_sampled_accel_lower_bound+np.dot(range(0,rx),delta_accel)
     ry = max_accely/delta_accel
     ry = int(m.floor(ry))
-    y_sampled_accel = range(0,ry)*delta_accel
+    y_sampled_accel = np.dot(range(0,ry),delta_accel)
 
-    x_acc_mesh, y_acc_mesh = meshgrid(x_sampled_accel,y_sampled_accel)
+    x_acc_mesh, y_acc_mesh = np.meshgrid(x_sampled_accel,y_sampled_accel)
     xy_sampled_accel = [x_acc_mesh.reshape(1,rx*ry),y_acc_mesh.reshape(1,rx*ry)]
 
 
@@ -63,13 +63,14 @@ def poly_traj_generation(self, rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,lo
 
     recover_t = 4
     rt = int(m.ceil(local_traj_duration/dt))
-    t = range(0,rt)*dt
+    t = np.dot(range(0,rt),dt)
     n_accel = len(x_acc_mesh)
-    Xtraj = np.array((n_accel),rt)
-    Ytraj = np.array((n_accel),rt)
-    Xvel = np.array((n_accel),rt)
-    Yvel = np.array((n_accel),rt)
+    Xtraj = np.array((n_accel,rt))
+    Ytraj = np.array((n_accel,rt))
+    Xvel = np.array((n_accel,rt))
+    Yvel = np.array((n_accel,rt))
 
+    action = [0,0]
     for i in range(0,n_accel):
         action[0] = xy_sampled_accel[-1-i][0]
         action[1] = xy_sampled_accel[-1-i][1]
@@ -102,7 +103,7 @@ def poly_traj_generation(self, rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,lo
 
         ## for n_coeff == 5:
         bx = np.array([linalg.norm(vR_)*tbc_rob-sum(np.multiply([ntr**2,ntr],x_ceoff[3:5])),\
-                linalg.norm(vR_) - sum(np.multiply([2*ntr,1]*x_coeff[3:5],-2*x_coeff[3]])))
+                linalg.norm(vR_) - sum(np.multiply([2*ntr,1]*x_coeff[3:5])),-2*x_coeff[3]])
         x_coeff[0:3] = linalg.solve(Ax,bx)
 
         late_tbc_rob = ntr+recover_t
@@ -120,7 +121,7 @@ def poly_traj_generation(self, rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,lo
 
         sm_rob = safety_sm - timing_sm
         by = np.array([sm_rob-sum(np.multiply([ntr**2,ntr],y_coeff[3:5])),\
-                -sum(np.multiply([2*ntr,1],y_coeff[3:5])), -sum(np.multiply([ltr**2,ltr],y_coeff[3:5]])))
+                -sum(np.multiply([2*ntr,1],y_coeff[3:5])), -sum(np.multiply([ltr**2,ltr],y_coeff[3:5]))])
         y_coeff[0:3] = linalg.solve(Ay,by)
 
         x_traj = zeros(rt)
@@ -148,5 +149,5 @@ def poly_traj_generation(self, rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,lo
         Xvel[i,:] = x_vel_ref
         Yvel[i,:] = y_vel_ref
 
-    return action poly_plan Xtraj Ytraj Xvel Yvel
+    return action, poly_plan, Xtraj, Ytraj, Xvel, Yvel
 
