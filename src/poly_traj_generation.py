@@ -3,7 +3,7 @@ import numpy.linalg as linalg
 import sys
 import math as m
 
-def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj_duration, dt, time, reaction_time, max_accelx, max_accely, timing_sm, safety_sm, ped_goal, rob_goal, vh, vr, n_states):
+def PolyTrajGeneration(time_shift,rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj_duration, dt, time, reaction_time, max_accelx, max_accely, timing_sm, safety_sm, ped_goal, rob_goal, vh, vr, n_states):
     if rob_intent>1 :
         rob_intent = 0
 
@@ -29,7 +29,7 @@ def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj
     tbc = np.linalg.solve(A,p_rel)
     tbc_rob = tbc[0]
     tbc_ped = tbc[1]
-    arrival_timing_ped = tbc[1]
+    arrival_timing_ped = tbc[1]-time_shift
 
     if arrival_timing_ped > reaction_time :
         poly_plan = 0
@@ -45,15 +45,18 @@ def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj
     rx = int(m.floor(rx))
 
     x_sampled_accel = x_sampled_accel_lower_bound+np.dot(range(0,rx),delta_accel)
+    if len(x_sampled_accel)==0 :
+	x_sampled_accel = max_accelx
+
     ry = max_accely/delta_accel
     ry = int(m.floor(ry))
     y_sampled_accel = np.dot(range(0,ry),delta_accel)
 
     x_acc_mesh, y_acc_mesh = np.meshgrid(x_sampled_accel,y_sampled_accel)
     
-    xy_sampled_accel = [x_acc_mesh.reshape(1,rx*ry),y_acc_mesh.reshape(1,rx*ry)]
-    x_sampled_accel = np.copy(x_acc_mesh.reshape(1,rx*ry))
-    y_sampled_accel = np.copy(y_acc_mesh.reshape(1,rx*ry))
+    #xy_sampled_accel = [x_acc_mesh.reshape(1,rx*ry),y_acc_mesh.reshape(1,rx*ry)]
+    x_sampled_accel = x_acc_mesh.reshape(1,rx*ry)
+    y_sampled_accel = y_acc_mesh.reshape(1,rx*ry)
 
 
     # Forward Rollouts --x:vR_ direction
@@ -76,14 +79,16 @@ def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj
     Yvel = np.zeros((n_accel,rt))
 
     action = [0,0]
+    
     for i in range(0,n_accel):
-        action[0] = x_sampled_accel[0][-1-i]
-        action[1] = y_sampled_accel[0][-1-i]
+	if len(x_sampled_accel)>0 :
+            action[0] = x_sampled_accel[0][-1-i]
+            action[1] = y_sampled_accel[0][-1-i]
 
         x_coeff[3] = action[0]/2
         y_coeff[3] = action[1]/2
 
-        new_tbc_rob = tbc_ped - timing_sm/linalg.norm(vH_)
+        new_tbc_rob = arrival_timing_ped - timing_sm/linalg.norm(vH_)
         ntr = new_tbc_rob
         Ax = np.zeros((3,3))
         Ax[0][0] = ntr**n_coeff
