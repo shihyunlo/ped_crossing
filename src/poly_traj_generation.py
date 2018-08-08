@@ -50,7 +50,10 @@ def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj
     y_sampled_accel = np.dot(range(0,ry),delta_accel)
 
     x_acc_mesh, y_acc_mesh = np.meshgrid(x_sampled_accel,y_sampled_accel)
+    
     xy_sampled_accel = [x_acc_mesh.reshape(1,rx*ry),y_acc_mesh.reshape(1,rx*ry)]
+    x_sampled_accel = np.copy(x_acc_mesh.reshape(1,rx*ry))
+    y_sampled_accel = np.copy(y_acc_mesh.reshape(1,rx*ry))
 
 
     # Forward Rollouts --x:vR_ direction
@@ -58,27 +61,29 @@ def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj
     x_coeff = np.zeros(n_coeff)
     y_coeff = np.zeros(n_coeff)
     x_coeff[n_coeff-1] = sum(np.multiply(vR,vR_))/linalg.norm(vR_)
-    y_coeff[n_coeff-1] = m.sqrt(linalg.norm(vR)**2-linalg.norm(x_coeff[n_coeff-1])**2)
+    y_coeff[n_coeff-1] = m.sqrt(max(0,linalg.norm(vR)**2-linalg.norm(x_coeff[n_coeff-1])**2))
 
 
     recover_t = 4
     rt = int(m.ceil(local_traj_duration/dt))
     t = np.dot(range(0,rt),dt)
     n_accel = len(x_acc_mesh)
-    Xtraj = np.array((n_accel,rt))
-    Ytraj = np.array((n_accel,rt))
-    Xvel = np.array((n_accel,rt))
-    Yvel = np.array((n_accel,rt))
+
+    #print 'n_accel = {}'.format(n_accel)
+    Xtraj = np.zeros((n_accel,rt))
+    Ytraj = np.zeros((n_accel,rt))
+    Xvel = np.zeros((n_accel,rt))
+    Yvel = np.zeros((n_accel,rt))
 
     action = [0,0]
     for i in range(0,n_accel):
-        action[0] = xy_sampled_accel[-1-i][0]
-        action[1] = xy_sampled_accel[-1-i][1]
+        action[0] = x_sampled_accel[0][-1-i]
+        action[1] = y_sampled_accel[0][-1-i]
 
         x_coeff[3] = action[0]/2
         y_coeff[3] = action[1]/2
 
-        new_tbc_rob = arrival_time_ped - timing_sm/linalg.norm(vH_)
+        new_tbc_rob = tbc_ped - timing_sm/linalg.norm(vH_)
         ntr = new_tbc_rob
         Ax = np.zeros((3,3))
         Ax[0][0] = ntr**n_coeff
@@ -102,8 +107,10 @@ def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj
         #        [5*4*ntr**3, 4*3*ntr**2, 3*2*ntr**1])
 
         ## for n_coeff == 5:
-        bx = np.array([linalg.norm(vR_)*tbc_rob-sum(np.multiply([ntr**2,ntr],x_ceoff[3:5])),\
-                linalg.norm(vR_) - sum(np.multiply([2*ntr,1]*x_coeff[3:5])),-2*x_coeff[3]])
+	bx = np.zeros(3)
+	bx[0] = linalg.norm(vR_)*tbc_rob-np.dot(x_coeff[3:5],[ntr**2,ntr])
+        bx[1] = linalg.norm(vR_) - np.dot(x_coeff[3:5],[2*ntr,1])
+        bx[2] = -2*x_coeff[3]       
         x_coeff[0:3] = linalg.solve(Ax,bx)
 
         late_tbc_rob = ntr+recover_t
@@ -120,14 +127,17 @@ def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj
         Ay[2][2] = ltr**3
 
         sm_rob = safety_sm - timing_sm
-        by = np.array([sm_rob-sum(np.multiply([ntr**2,ntr],y_coeff[3:5])),\
-                -sum(np.multiply([2*ntr,1],y_coeff[3:5])), -sum(np.multiply([ltr**2,ltr],y_coeff[3:5]))])
+	by = np.zeros(3)
+        by[0] = sm_rob-np.dot(y_coeff[3:5],[ntr**2,ntr])
+	by[1] = -np.dot(y_coeff[3:5],[2*ntr,1])
+	by[2] = -np.dot(y_coeff[3:5],[ltr**2,ltr])
+                 
         y_coeff[0:3] = linalg.solve(Ay,by)
 
-        x_traj = zeros(rt)
-        y_traj = zeros(rt)
-        x_vel = zeros(rt)
-        y_vel = zeros(rt)
+        x_traj = np.zeros(rt)
+        y_traj = np.zeros(rt)
+        x_vel = np.zeros(rt)
+        y_vel = np.zeros(rt)
 
         for j in range(0,n_coeff) :
             x_traj += np.multiply(np.power(t,j+1),x_coeff[n_coeff-1-j])
@@ -137,17 +147,17 @@ def PolyTrajGeneration(rob_pos, rob_vel, rob_intent, ped_pos, ped_vel,local_traj
 
         x_dir = vR_/np.linalg.norm(vR_)
         y_dir = np.dot([[0,1],[-1,0]],x_dir)
-        y_dir = np.sign(sum(np.multiply(p1_goal-pR,y_dir)))*y_dir
+        y_dir = np.sign(sum(np.multiply(p1_goal_hat-pR,y_dir)))*y_dir
 
         x_traj_ref = x_dir[0]*x_traj + y_dir[0]*y_traj
         y_traj_ref = x_dir[1]*x_traj + y_dir[1]*y_traj
         x_vel_ref = x_dir[0]*x_vel + y_dir[0]*y_vel
         y_vel_ref = x_dir[1]*x_vel + y_dir[1]*y_vel
 
-        Xtraj[i,:] = x_traj_ref
-        Ytraj[i,:] = y_traj_ref
-        Xvel[i,:] = x_vel_ref
-        Yvel[i,:] = y_vel_ref
+        Xtraj[i] = pR[0]+np.copy(x_traj_ref)
+        Ytraj[i] = pR[1]+np.copy(y_traj_ref)
+        Xvel[i] = np.copy(x_vel_ref)
+        Yvel[i] = np.copy(y_vel_ref)
 
     return action, poly_plan, Xtraj, Ytraj, Xvel, Yvel
 
