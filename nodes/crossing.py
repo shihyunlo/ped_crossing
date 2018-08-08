@@ -38,7 +38,7 @@ class PedCrossing :
 	self.rob_goal = np.zeros((2,1))
 	self.vh = 1.0 #defult, to be estimate
 	self.vr = 0.7 #nominal speed
-	self.T = 12.0
+	self.T = 16.0
 
 	self.ped_pos = np.zeros((2,1))
         self.ped_vel = np.zeros((2,1))
@@ -55,8 +55,8 @@ class PedCrossing :
         # polynomial traj generation
         self.poly_plan = 0
         self.ct = self.T/2
-        self.timing_sm = 1.0
-        self.safety_sm = 1.2
+        self.timing_sm = 0.6
+        self.safety_sm = 0.9
         # self.timing_sm = sys.argv[3]
         # self.safety_sm = sys.argv[4]
 
@@ -328,7 +328,7 @@ class PedCrossing :
 
                 if tbc_ped < self.rob_reaction_time :
             	    self.local_traj_duration = np.copy(tbc_ped)
-		    time_shift = 1.5
+		    time_shift = 0.5
                  #   print '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}'.format(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
 	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGeneration(time_shift,self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
 		    self.Xtraj = np.copy(xtraj[0])
@@ -343,7 +343,7 @@ class PedCrossing :
 	    lookahead = int(0.2/self.dt)
 	    lookahead = 0
 	    #compute commands: cmd_state or vel_cmd
-            if self.robot_poly_index < (self.local_traj_duration/self.dt-lookahead) :
+            if self.robot_poly_index < (self.local_traj_duration/self.dt-lookahead-15) :
                 self.x_pos_ref = np.copy(self.Xtraj[self.robot_poly_index]+lookahead)
                 self.y_pos_ref = np.copy(self.Ytraj[self.robot_poly_index]+lookahead)
                 self.x_vel_ref = np.copy(self.Xvel[self.robot_poly_index])
@@ -356,8 +356,8 @@ class PedCrossing :
        	        self.vel_msg.linear.y = self.y_vel_ref
                 self.vel_msg.linear.x = 1.0*(self.x_pos_ref-self.rob_pos[0])/self.dt
        	        self.vel_msg.linear.y = 1.0*(self.y_pos_ref-self.rob_pos[1])/self.dt
-                #self.vel_msg.linear.x = 0.2*(self.x_pos_ref-self.rob_pos[0])/self.dt + 0.8*self.x_vel_ref
-       	        #self.vel_msg.linear.y = 0.8*(self.y_pos_ref-self.rob_pos[1])/self.dt + 0.2*self.y_vel_ref
+                self.vel_msg.linear.x = 0.2*(self.x_pos_ref-self.rob_pos[0])/self.dt + 0.8*self.x_vel_ref
+       	        self.vel_msg.linear.y = 0.2*(self.y_pos_ref-self.rob_pos[1])/self.dt + 0.8*self.y_vel_ref
                 #self.vel_msg.linear.x = 0.2*(self.x_pos_ref-y_pos_ref_old)/self.dt + 0.8*self.x_vel_ref
        	        #self.vel_msg.linear.y = 0.2*(self.y_pos_ref-y_pos_ref_old)/self.dt + 0.8*self.y_vel_ref
                 self.vel_msg.angular.z = 0.0
