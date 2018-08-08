@@ -64,6 +64,7 @@ class PedCrossing :
         # self.max_accelx = sys.argv[5]
         # self.max_accely = sys.argv[6]
 	self.recovery_gain = 4.0
+	self.local_traj_duration = 3.0
 
         self.Xtraj = []
         self.Ytraj = []
@@ -219,13 +220,13 @@ class PedCrossing :
         vel_est = np.zeros((2,vel_n))
         if self.sim:
 	        ## set-up callback values for planning
-            self.ped_goal[0] = -0.2
-            self.ped_goal[1] = 8.71
-	    self.rob_goal[0] = 4.6
+            self.ped_goal[0] = -1.0
+            self.ped_goal[1] = 7.61
+	    self.rob_goal[0] = 3.0
             self.rob_goal[1] = 2.0
 
-	    self.ped_pos[0] = -0.2
-            self.ped_pos[1] = -4.49
+	    self.ped_pos[0] = -1
+            self.ped_pos[1] = -3.39
 	    self.rob_pos[0] = -5.0
             self.rob_pos[1] = 2.0
 
@@ -289,35 +290,37 @@ class PedCrossing :
 	    tbc_rob = tbc[0]
 	    tbc_ped = tbc[1]
 
-            local_traj_duration = tbc_ped
             time = 0.0
 
 	    if self.poly_plan==0 :
                 vR_ = vR_*tbc_rob/(tbc_ped-self.timing_sm/self.vh)
 
                 if tbc_ped < self.rob_reaction_time :
-                    print '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}'.format(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
-	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGeneration(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
-		    self.Xtraj = xtraj
-                    self.Ytraj = ytraj
-                    self.Xvel = xvel
-                    self.Yvel = yvel
+            	    self.local_traj_duration = np.copy(tbc_ped)
+                    print '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}'.format(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
+	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGeneration(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
+		    self.Xtraj = np.copy(xtraj[0])
+                    self.Ytraj = np.copy(ytraj[0])
+                    self.Xvel = np.copy(xvel[0])
+                    self.Yvel = np.copy(yvel[0])
 
                     self.poly_plan = pplan
                     self.robot_time_del = 0
                     self.robot_poly_index = 0
-
-            if self.robot_poly_index < local_traj_duration/self.dt :
-                self.x_pos_ref = self.Xtraj[0,self.robot_poly_index]
-                self.y_pos_ref = self.Ytraj[0,self.robot_poly_index]
-                self.x_vel_ref = self.Xvel[0,self.robot_poly_index]
-                self.y_vel_ref = self.Yvel[0,self.robot_poly_index]
+	    print 'poly index = {}'.format(self.robot_poly_index)
+            if self.robot_poly_index < (self.local_traj_duration/self.dt) :
+                self.x_pos_ref = np.copy(self.Xtraj[self.robot_poly_index])
+                self.y_pos_ref = np.copy(self.Ytraj[self.robot_poly_index])
+                self.x_vel_ref = np.copy(self.Xvel[self.robot_poly_index])
+                self.y_vel_ref = np.copy(self.Yvel[self.robot_poly_index])
+		print 'poly tracking x_pos_ref = {}'.format(self.x_pos_ref)
             else :
                 a_rob = self.recovery_gain*(vR_-vR)
                 self.x_vel_ref = vR_[0]
                 self.y_vel_ref = vR_[1]
                 self.x_pos_ref = pR[0] + vR_[0]*self.dt
                 self.y_pos_ref = pR[1] + vR_[1]*self.dt
+		print 'vR_ tracking = {}'.format(vR_)
 
             if self.sim :
                 self.rob_pos[0] = self.x_pos_ref
@@ -341,7 +344,7 @@ class PedCrossing :
                     vel_count = 0
 		    #print 'pos_old = {}'.format(pos_ped_old)
 		    #print 'pos_new = {}'.format(self.ped_pos)
-		    print 'vH = {}'.format(self.ped_vel)
+		    #print 'vH = {}'.format(self.ped_vel)
 
             vel_count = vel_count + 1
 
@@ -365,7 +368,7 @@ class PedCrossing :
             plt.plot(self.corner_pose[:, 0], self.corner_pose[:, 1], 'k')
             plt.plot([self.corner_pose[-1, 0], self.corner_pose[0, 0]], [self.corner_pose[-1, 1], self.corner_pose[0, 1]], 'k')
             # plot robot
-            plt.plot(self.start_x, self.start_y, 'or')
+            #plt.plot(self.start_x, self.start_y, 'or')
 	    plt.plot(self.ped_pos[0],self.ped_pos[1],'ok')
 	    plt.plot(self.rob_pos[0],self.rob_pos[1],'om')
             #plt.plot(self.goal_x, self.goal_y, 'ob')
@@ -379,7 +382,7 @@ class PedCrossing :
             #plt.plot(waypoints[:, 0], waypoints[:, 1], 'or')
             #plt.plot(waypoints[ind, 0], waypoints[ind, 1], 'og')
 
-            plt.draw()
+            #plt.draw()
 
             self.robot_poly_index += 1
             self.robot_time_del += self.dt
