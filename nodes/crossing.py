@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import sys
-sys.path.append('/home/slo/ws/src/ped_crossing/src')
+sys.path.append('/home/researcher_ri/ws_adelie/src/ped_crossing/src')
 import poly_traj_generation
 from poly_traj_generation import PolyTrajGeneration
 
@@ -43,6 +43,7 @@ class PedCrossing :
 	self.ped_pos = np.zeros((2,1))
         self.ped_vel = np.zeros((2,1))
         self.rob_pos = np.zeros((2,1))
+	self.rob_pos[0] = 1
         self.rob_vel = np.zeros((2,1))
 	self.ped_pos_old = np.zeros((2,1))
 	self.rob_pos_old = np.zeros((2,1))
@@ -140,7 +141,7 @@ class PedCrossing :
         self.corner02_sub = rospy.Subscriber('/vrpn_client_node/corner3/pose', PoseStamped, self.corner02_callback, queue_size=1)
         self.corner03_sub = rospy.Subscriber('/vrpn_client_node/corner4/pose', PoseStamped, self.corner03_callback, queue_size=1)
 
-        self.robot_vrpn_pose_sub = rospy.Subscriber('/vrpn_client_node/RockHopper6/pose', PoseStamped, self.robot_vrpn_pose_callback, queue_size=1)
+        self.robot_pose_sub = rospy.Subscriber('/vrpn_client_node/RockHopper6/pose', PoseStamped, self.robot_pose_callback, queue_size=1)
         #self.robot_gazebo_pose_sub = rospy.Subscriber('/gazebo/model_states', PoseStamped, self.robot_vrpn_pose_callback, queue_size=1)
 
         self.goal_pose_sub = rospy.Subscriber("/move_base_simple/goal", PoseStamped, self.goal_pose_callback, queue_size=1)
@@ -203,7 +204,7 @@ class PedCrossing :
         self.corner_pose[idx, 0] = pose_msg.pose.position.x
         self.corner_pose[idx, 1] = pose_msg.pose.position.y
 
-    def robot_vrpn_pose_callback(self, pose_msg):
+    def robot_pose_callback(self, pose_msg):
         if pose_msg.pose.position.z > 0.05 :
             self.start_x = pose_msg.pose.position.x
             self.start_y = pose_msg.pose.position.y
@@ -216,9 +217,8 @@ class PedCrossing :
             self.start_pre_x = self.start_x
             self.start_pre_y = self.start_y
 	    
-	    if not self.sim:
-	        self.rob_pos[0] = pose_msg.pose.position.x
-	        self.rob_pos[1] = pose.msg.pose.position.y
+	    self.rob_pos[0] = pose_msg.pose.position.x
+	    self.rob_pos[1] = pose_msg.pose.position.y
 
     def goal_pose_callback(self, goal_pose_msg):
         self.goal_x = goal_pose_msg.pose.position.x
@@ -246,9 +246,8 @@ class PedCrossing :
 	    self.ped_pos[1] = (self.rob_pos[1]+self.rob_goal[1])/2 - (self.T/2-0.1)*self.ped_vel[1]
             self.ped_goal[0] = self.ped_pos[0] + self.T*self.ped_vel[0]
             self.ped_goal[1] = self.ped_pos[1] + self.T*self.ped_vel[1]
-	    
-
-        while (not rospy.is_shutdown()) and (np.linalg.norm(self.rob_pos-self.rob_goal)>0.4):
+        
+	while (not rospy.is_shutdown()) and (np.linalg.norm(self.rob_pos-self.rob_goal)>0.4):
 #	        else:
 #                self.ped_goal[0] = -0.2
 #                self.ped_goal[1] = 8.71
@@ -287,17 +286,42 @@ class PedCrossing :
 
                 self.rob_vel[0] = model_state_result.twist.linear.x
                 self.rob_vel[1] = model_state_result.twist.linear.y
+	    else :
+	        ped_pose = self.obs_pose[self.ped_helmet_id]
+	        self.ped_pos[1] = ped_pose[1]
+	        self.ped_pos[0] = ped_pose[0]
+		#print 'ped_helmet_id = {}'.format(self.ped_helmet_id)
+	        #print 'ped_pos = {}'.format(self.ped_pos)
 		#self.vh = 1.1
 	    #else :
 		#self.vh = np.linalg.norm(self.rob_vel)
-		
-            self.vh = np.linalg.norm(self.ped_vel)
+            	if vel_count== 0 :
+                    self.rob_pos_old[0] = self.rob_pos[0]
+                    self.rob_pos_old[1] = self.rob_pos[1]
+                    self.ped_pos_old[0] = self.ped_pos[0]
+                    self.ped_pos_old[1] = self.ped_pos[1]
 
-            pR = self.rob_pos
+                if vel_count>=(vel_n-1) :
+                    self.rob_vel = (self.rob_pos-self.rob_pos_old)/self.dt_mocap/vel_n
+                    self.ped_vel = (self.ped_pos-self.ped_pos_old)/self.dt_mocap/vel_n
+                    vel_count = -1
+		    #print 'pos_old = {}'.format(pos_ped_old)
+		    #print 'pos_new = {}'.format(self.ped_pos)
+		    #print 'vH = {}'.format(self.ped_vel)
+		
+                vel_count = vel_count + 1
+
+            self.vh = np.linalg.norm(self.ped_vel)
+            
+	    if self.vh < 0.1 :
+		continue
+		#rate.sleep()
+
+	    pR = self.rob_pos
 	    vR = self.rob_vel
 	    pH = self.ped_pos
 	    vH = self.ped_vel
-
+            # TODO: map it to align with goal direction
             vH_ = (self.ped_goal - pH)/np.linalg.norm(self.ped_goal - pH)*self.vh
             vR_ = (self.rob_goal - pR)/np.linalg.norm(self.rob_goal - pR)*self.vr
 	        # collision timing check
@@ -328,7 +352,7 @@ class PedCrossing :
 
                 if tbc_ped < self.rob_reaction_time :
             	    self.local_traj_duration = np.copy(tbc_ped)
-		    time_shift = 0.5
+		    time_shift = 1.5
                  #   print '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}'.format(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
 	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGeneration(time_shift,self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
 		    self.Xtraj = np.copy(xtraj[0])
@@ -375,7 +399,7 @@ class PedCrossing :
        	        #self.vel_msg.linear.y = 1.0*self.y_vel_ref + 2.0*self.dt*(vR_[1]-vR[1])
                 self.vel_msg.angular.z = 0.0
             
-	    self.velocity_pub.publish(self.vel_msg)
+#	    self.velocity_pub.publish(self.vel_msg)
 
             if self.sim :
                 #self.rob_pos[0] = self.x_pos_ref
@@ -386,25 +410,9 @@ class PedCrossing :
 		#self.rob_vel[1] = vR_[1]
 		self.ped_vel[0] = vH_[0]
 		self.ped_vel[1] = vH_[1]
-	    else :		
-            	if vel_count== 0 :
-                    self.rob_pos_old[0] = self.rob_pos[0]
-                    self.rob_pos_old[1] = self.rob_pos[1]
-                    self.ped_pos_old[0] = self.ped_pos[0]
-                    self.ped_pos_old[1] = self.ped_pos[1]
-
-                if vel_count>=(vel_n-1) :
-                    self.rob_vel = (self.rob_pos-self.rob_pos_old)/self.dt_mocap/vel_n
-                    self.ped_vel = (self.ped_pos-self.ped_pos_old)/self.dt_mocap/vel_n
-                    vel_count = 0
-		    #print 'pos_old = {}'.format(pos_ped_old)
-		    #print 'pos_new = {}'.format(self.ped_pos)
-		    #print 'vH = {}'.format(self.ped_vel)
-
-            vel_count = vel_count + 1
 
 	    #plt.clf()
-            plt.axis('equal')
+	    plt.axis('equal')
             x_min = -6
             x_max = 12
             y_min = -8
@@ -495,5 +503,5 @@ if __name__ == '__main__':
     rospy.init_node('ped_crossing_node')
     #arg1: helmet id for ped, arg2: chair id for ped_goal
     #arg3: timing_sm, arg4: safety_sm, arg5: max_accelx (0.4), arg6: max_accely (0.4)
-    ped_crossing = PedCrossing()
+    ped_crossing = PedCrossing(sim_mode=False)
     rospy.spin()
