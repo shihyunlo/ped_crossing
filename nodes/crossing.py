@@ -4,6 +4,7 @@ sys.path.append('/home/slo/ws/src/ped_crossing/src')
 import poly_traj_generation
 from poly_traj_generation import PolyTrajGeneration
 
+import math as m
 import numpy as np
 import math
 import numpy.linalg as LA
@@ -12,6 +13,7 @@ import matplotlib.pyplot as plt
 
 import rospy
 import std_msgs.msg as std_msg
+from nav_msgs.msg import Odometry
 import geometry_msgs.msg as geom_msg
 from geometry_msgs.msg import PoseStamped, Twist
 import visualization_msgs.msg as vis_msg
@@ -36,7 +38,7 @@ class PedCrossing :
         # ped/robot goal information
         self.ped_goal = np.zeros((2,1))
 	self.rob_goal = np.zeros((2,1))
-	self.vh = 1.0 #defult, to be estimate
+	self.vh = 1.1 #defult, to be estimate
 	self.vr = 0.7 #nominal speed
 	self.T = 16.0
 
@@ -76,6 +78,10 @@ class PedCrossing :
         self.x_vel_ref = 0.0
         self.y_vel_ref = 0.0
 
+	self.angular_vel_z = 0.0
+
+	self.calibrated = False
+	self.start = False
         #helmets and chairs:
 	if self.sim:
             rospy.wait_for_service('/gazebo/get_model_state')
@@ -131,6 +137,7 @@ class PedCrossing :
         #    rospy.wait_for_service('/gazebo/get_model_state')
 
 
+	self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback, queue_size=1)
         self.helmet00_sub = rospy.Subscriber('/vrpn_client_node/HelmetXL/pose', PoseStamped, self.helmet00_callback, queue_size=1)
         self.helmet01_sub = rospy.Subscriber('/vrpn_client_node/HelmetM/pose', PoseStamped, self.helmet01_callback, queue_size=1)
         self.helmet02_sub = rospy.Subscriber('/vrpn_client_node/HelmetS/pose', PoseStamped, self.helmet02_callback, queue_size=1)
@@ -202,13 +209,15 @@ class PedCrossing :
         idx = 3
         self.corner_pose[idx, 0] = pose_msg.pose.position.x
         self.corner_pose[idx, 1] = pose_msg.pose.position.y
+    def odom_callback(self, pose_msg):
+        self.angular_vel_z = pose_msg.twist.twist.angular.x
 
     def robot_vrpn_pose_callback(self, pose_msg):
         if pose_msg.pose.position.z > 0.05 :
             self.start_x = pose_msg.pose.position.x
             self.start_y = pose_msg.pose.position.y
-            # TODO: get the real yaw
-            self.start_yaw = 0.0
+            q = pose_msg.pose.orientation
+            self.start_yaw = math.atan2(2.0*(q.x*q.y + q.w*q.z), q.w*q.w + q.x*q.x - q.y*q.y - q.z*q.z)
 
             self.vx_ = (self.start_x - self.start_pre_x) / self.dt_mocap
             self.vy_ = (self.start_y - self.start_pre_y) / self.dt_mocap
@@ -227,7 +236,8 @@ class PedCrossing :
         #self.goal_yaw = math.atan2(dd2.0*(q.x*q.y + q.w*q.z), q.w*q.w + q.x*q.x - q.y*q.y - q.z*q.z)
 
     def run(self):
-        rate = rospy.Rate(1.0/self.dt)
+	cmd_pub_rate = 10
+        rate = rospy.Rate(cmd_pub_rate)
         vel_count = 0
         vel_n = 5
         vel_est = np.zeros((2,vel_n))
@@ -237,8 +247,8 @@ class PedCrossing :
 	    self.rob_pos[0] = self.start_x
             self.rob_pos[1] = self.start_y
             self.ped_vel[0] = 0.0
-            self.ped_vel[1] = 1.1
-            self.rob_vel[0] = 0.65
+            self.ped_vel[1] = self.vh
+            self.rob_vel[0] = self.vr
             self.rob_vel[1] = 0.0
 	    self.rob_goal[0] = self.rob_pos[0] + self.T*self.rob_vel[0]
 	    self.rob_goal[1] = self.rob_pos[1] + self.T*self.rob_vel[1]
@@ -246,9 +256,12 @@ class PedCrossing :
 	    self.ped_pos[1] = (self.rob_pos[1]+self.rob_goal[1])/2 - (self.T/2-0.1)*self.ped_vel[1]
             self.ped_goal[0] = self.ped_pos[0] + self.T*self.ped_vel[0]
             self.ped_goal[1] = self.ped_pos[1] + self.T*self.ped_vel[1]
-	    
-
-        while (not rospy.is_shutdown()) and (np.linalg.norm(self.rob_pos-self.rob_goal)>0.4):
+	 
+        vel_msg_ = Twist()
+	goal_thr = 0.4
+	rate_count = int(cmd_pub_rate/(1/self.dt))
+	
+        while (not rospy.is_shutdown()) and (np.linalg.norm(self.rob_pos-self.rob_goal)>goal_thr):
 #	        else:
 #                self.ped_goal[0] = -0.2
 #                self.ped_goal[1] = 8.71
@@ -276,20 +289,44 @@ class PedCrossing :
             #waypoints, lin_x, lin_y, ind, obs_lin_x, obs_lin_y = self.straighline_planner(self.obs_pose)
             #vel_est[0,vel_count] = self.vx_
             #vel_est[1,vel_count] = self.vy_
+	    #if not self.calibrated :
+#		criteria1 = (self.ped_goal[0]!=0.0)
+#		criteria2 = (self.ped_pos[0]!=0.0)
+#		criteria3 = (self.rob_goal[0]!=0.0)
+#		pub 100hz
+#		if criteria1 and criteria2 and criteria3:
+#			self.calibrated = 1
+#		else :
+#			rate.sleep()
+#			continue		
+	    
+	    
+
+	    if not self.start :
+	        raw_input('Environment Ready, Press Any Key to Start')
+	        self.start = True
+
+	        
 
 	    if self.sim :
+		# gazebo
                 model_state_result = self.get_model_srv(self.request)
                 q = model_state_result.pose.orientation
-
                 self.rob_pos[0] = model_state_result.pose.position.x
                 self.rob_pos[1] = model_state_result.pose.position.y
                 self.rob_yaw = math.atan2(2.0*(q.x*q.y + q.w*q.z), q.w*q.w + q.x*q.x - q.y*q.y - q.z*q.z)
-
                 self.rob_vel[0] = model_state_result.twist.linear.x
                 self.rob_vel[1] = model_state_result.twist.linear.y
-		#self.vh = 1.1
-	    #else :
-		#self.vh = np.linalg.norm(self.rob_vel)
+
+		
+	    if rate_count < int(cmd_pub_rate/(1/self.dt)) :
+		rate_count += 1
+		# TODO: state_estimate
+		rate.sleep()
+		continue
+	    else :
+	        self.velocity_pub.publish(self.vel_msg)
+		rate_count = 0
 		
             self.vh = np.linalg.norm(self.ped_vel)
 
@@ -325,10 +362,12 @@ class PedCrossing :
 		self.y_pos_ref  = vR_[1]*self.dt + self.rob_pos[1]
 		self.x_vel_ref = vR_[0]
 		self.y_vel_ref = vR_[1]
+		#print '{}'.format(tbc_ped-tbc_rob-self.timing_sm/self.vh)
 
                 if tbc_ped < self.rob_reaction_time :
+		    
             	    self.local_traj_duration = np.copy(tbc_ped)
-		    time_shift = 0.5
+		    time_shift = 1.5
                  #   print '{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}'.format(self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
 	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGeneration(time_shift,self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
 		    self.Xtraj = np.copy(xtraj[0])
@@ -342,8 +381,9 @@ class PedCrossing :
 	    #print 'poly index = {}'.format(self.robot_poly_index)
 	    lookahead = int(0.2/self.dt)
 	    lookahead = 0
+	    early_terminate = 15
 	    #compute commands: cmd_state or vel_cmd
-            if self.robot_poly_index < (self.local_traj_duration/self.dt-lookahead-15) :
+            if self.robot_poly_index < (self.local_traj_duration/self.dt-lookahead-early_terminate) :
                 self.x_pos_ref = np.copy(self.Xtraj[self.robot_poly_index]+lookahead)
                 self.y_pos_ref = np.copy(self.Ytraj[self.robot_poly_index]+lookahead)
                 self.x_vel_ref = np.copy(self.Xvel[self.robot_poly_index])
@@ -352,15 +392,14 @@ class PedCrossing :
                 x_pos_ref_old = np.copy(self.Xtraj[max(0,self.robot_poly_index-1)])
                 y_pos_ref_old = np.copy(self.Ytraj[max(0,self.robot_poly_index-1)])
                 
-		self.vel_msg.linear.x = self.x_vel_ref
-       	        self.vel_msg.linear.y = self.y_vel_ref
-                self.vel_msg.linear.x = 1.0*(self.x_pos_ref-self.rob_pos[0])/self.dt
-       	        self.vel_msg.linear.y = 1.0*(self.y_pos_ref-self.rob_pos[1])/self.dt
-                self.vel_msg.linear.x = 0.2*(self.x_pos_ref-self.rob_pos[0])/self.dt + 0.8*self.x_vel_ref
-       	        self.vel_msg.linear.y = 0.2*(self.y_pos_ref-self.rob_pos[1])/self.dt + 0.8*self.y_vel_ref
+		vel_msg_.linear.x = self.x_vel_ref
+       	        vel_msg_.linear.y = self.y_vel_ref
+                vel_msg_.linear.x = 1.0*(self.x_pos_ref-self.rob_pos[0])/self.dt
+       	        vel_msg_.linear.y = 1.0*(self.y_pos_ref-self.rob_pos[1])/self.dt
+                vel_msg_.linear.x = 0.2*(self.x_pos_ref-self.rob_pos[0])/self.dt + 0.8*self.x_vel_ref
+       	        vel_msg_.linear.y = 0.2*(self.y_pos_ref-self.rob_pos[1])/self.dt + 0.8*self.y_vel_ref
                 #self.vel_msg.linear.x = 0.2*(self.x_pos_ref-y_pos_ref_old)/self.dt + 0.8*self.x_vel_ref
        	        #self.vel_msg.linear.y = 0.2*(self.y_pos_ref-y_pos_ref_old)/self.dt + 0.8*self.y_vel_ref
-                self.vel_msg.angular.z = 0.0
 	    
             else :
                 a_rob = self.recovery_gain*(vR_-vR)
@@ -369,15 +408,22 @@ class PedCrossing :
                 self.x_pos_ref = self.rob_pos[0] + vR_[0]*self.dt
                 self.y_pos_ref = self.rob_pos[1] + vR_[1]*self.dt
 		#print 'vR_ tracking = {}'.format(vR_)
-                self.vel_msg.linear.x = 1*self.x_vel_ref
-       	        self.vel_msg.linear.y = 1*self.y_vel_ref
+                vel_msg_.linear.x = 1*self.x_vel_ref
+       	        vel_msg_.linear.y = 1*self.y_vel_ref
                 #self.vel_msg.linear.x = 1.0*self.x_vel_ref + 2.0*self.dt*(vR_[0]-vR[0])
        	        #self.vel_msg.linear.y = 1.0*self.y_vel_ref + 2.0*self.dt*(vR_[1]-vR[1])
-                self.vel_msg.angular.z = 0.0
-            
+           	
+	    self.vel_msg.linear.x = vel_msg_.linear.x*m.cos(self.rob_yaw) - vel_msg_.linear.y*m.sin(self.rob_yaw)
+	    self.vel_msg.linear.y = vel_msg_.linear.x*m.sin(self.rob_yaw) + vel_msg_.linear.y*m.cos(self.rob_yaw)
+            omega = 1
+	    damping = 1
+	
+	   	
+	    self.vel_msg.angular.z = omega*(self.start_yaw-self.rob_yaw) + 2*damping*omega*(0-self.angular_vel_z)
 	    self.velocity_pub.publish(self.vel_msg)
-
-            if self.sim :
+            
+	    # forward simulation
+	    if self.sim :
                 #self.rob_pos[0] = self.x_pos_ref
                 #self.rob_pos[1] = self.y_pos_ref
                 self.ped_pos[0] += vH_[0]*self.dt
@@ -427,7 +473,7 @@ class PedCrossing :
 	    plt.plot(self.ped_pos[0],self.ped_pos[1],'ok')
 	    plt.plot(self.rob_pos[0],self.rob_pos[1],'om')
 	    if (len(self.Xtraj)>0) :
-		plt.plot(self.Xtraj,self.Ytraj,'r')
+		plt.plot(self.Xtraj[0:int(self.local_traj_duration/self.dt-early_terminate)],self.Ytraj[0:int(self.local_traj_duration/self.dt-early_terminate)],'r')
 	    else :
 		x_local_ref = np.zeros(2)
 		y_local_ref = np.zeros(2)
