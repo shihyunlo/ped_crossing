@@ -327,6 +327,7 @@ class PedCrossing :
 	    else :
 	        self.velocity_pub.publish(self.vel_msg)
 		rate_count = 0
+		rate_count += 1
 		
             self.vh = np.linalg.norm(self.ped_vel)
 
