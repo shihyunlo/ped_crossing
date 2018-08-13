@@ -376,7 +376,7 @@ class PedCrossing :
                     self.Ytraj = np.copy(ytraj[0])
                     self.Xvel = np.copy(xvel[0])
                     self.Yvel = np.copy(yvel[0])
-		    print 'max x vel = {}'.format(max(self.Xvel[0:20]))
+		    print 'max x vel = {}'.format(self.Xvel[0:20])
 		    print 'max y vel = {}'.format(max(self.Yvel[0:20]))
 
                     self.poly_plan = pplan
@@ -395,8 +395,15 @@ class PedCrossing :
 	    lookahead = int(0.2/self.dt)
 	    lookahead = 0
 	    early_terminate = 15
+	    #print 'self.Xvel = {}'.format(self.Xvel)
+	    #print 'self.Xvel>5.0 = {}'.format(self.Xvel>5.0)
+	    if len(self.Xvel)>0 :
+	        terminate_index = len(self.Xvel)-sum(self.Xvel>5.0)
+	    else :
+	        terminate_index = 0
 	    #compute commands: cmd_state or vel_cmd
-            if self.robot_poly_index < (self.local_traj_duration/self.dt-lookahead-early_terminate) :
+            #if self.robot_poly_index < (self.local_traj_duration/self.dt-lookahead-early_terminate) :
+            if self.robot_poly_index < terminate_index :
                 self.x_pos_ref = np.copy(self.Xtraj[self.robot_poly_index]+lookahead)
                 self.y_pos_ref = np.copy(self.Ytraj[self.robot_poly_index]+lookahead)
                 self.x_vel_ref = np.copy(self.Xvel[self.robot_poly_index])
@@ -486,7 +493,7 @@ class PedCrossing :
 	    plt.plot(self.ped_pos[0],self.ped_pos[1],'ok')
 	    plt.plot(self.rob_pos[0],self.rob_pos[1],'om')
 	    if (len(self.Xtraj)>0) :
-		plt.plot(self.Xtraj[0:int(self.local_traj_duration/self.dt-early_terminate)],self.Ytraj[0:int(self.local_traj_duration/self.dt-early_terminate)],'r')
+		plt.plot(self.Xtraj[0:terminate_index],self.Ytraj[0:terminate_index],'r')
 	    else :
 		x_local_ref = np.zeros(2)
 		y_local_ref = np.zeros(2)
