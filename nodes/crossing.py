@@ -3,6 +3,7 @@ import sys
 sys.path.append('/home/slo/ws/src/ped_crossing/src')
 import poly_traj_generation
 from poly_traj_generation import PolyTrajGeneration
+from poly_traj_generation_y import PolyTrajGenerationY
 
 import math as m
 import numpy as np
@@ -63,7 +64,7 @@ class PedCrossing :
         # self.safety_sm = sys.argv[4]
 
 	self.max_accelx = 0.0
-        self.max_accely = 0.1
+        self.max_accely = 0.4
         # self.max_accelx = sys.argv[5]
         # self.max_accely = sys.argv[6]
 	self.recovery_gain = 4.0
@@ -370,14 +371,23 @@ class PedCrossing :
             	    self.local_traj_duration = np.copy(tbc_ped)
 		    start_time = time.time()
 		    # poly_traj_generation
-		    time_shift = 1.5
-	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGeneration(time_shift,self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time_, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
-		    self.Xtraj = np.copy(xtraj[0])
-                    self.Ytraj = np.copy(ytraj[0])
-                    self.Xvel = np.copy(xvel[0])
-                    self.Yvel = np.copy(yvel[0])
-		    print 'max x vel = {}'.format(self.Xvel[0:20])
-		    print 'max y vel = {}'.format(max(self.Yvel[0:20]))
+		    time_shift = 0.5
+	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGenerationY(time_shift,self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time_, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
+		    print 'x_traj = {}'.format(xtraj)
+		    print 'x_vel = {}'.format(xvel)
+		    print 'y_traj = {}'.format(ytraj)
+		    print 'y_vel = {}'.format(yvel)
+		    #if self.max_accelx < 0.05 and self.max_accely <0.05 :
+		    for l in range(0,1):
+		        self.Xtraj = np.copy(xtraj[l])
+                        self.Ytraj = np.copy(ytraj[l])
+                        self.Xvel = np.copy(xvel[l])
+                        self.Yvel = np.copy(yvel[l])
+	        	terminate_index = len(self.Xvel)-max(sum(abs(self.Xvel)>5.0),sum(abs(self.Yvel)>5.0))
+			print 'max x vel = {}'.format(self.Xvel[0:terminate_index])
+			print 'max y vel = {}'.format(self.Yvel[0:terminate_index])
+			
+
 
                     self.poly_plan = pplan
                     self.robot_time_del = 0#
@@ -397,9 +407,7 @@ class PedCrossing :
 	    early_terminate = 15
 	    #print 'self.Xvel = {}'.format(self.Xvel)
 	    #print 'self.Xvel>5.0 = {}'.format(self.Xvel>5.0)
-	    if len(self.Xvel)>0 :
-	        terminate_index = len(self.Xvel)-sum(self.Xvel>5.0)
-	    else :
+	    if len(self.Xvel)==0 :
 	        terminate_index = 0
 	    #compute commands: cmd_state or vel_cmd
             #if self.robot_poly_index < (self.local_traj_duration/self.dt-lookahead-early_terminate) :
