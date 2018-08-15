@@ -59,7 +59,7 @@ class PedCrossing :
         self.poly_plan = 0
         self.ct = self.T/2
         self.timing_sm = 0.6
-        self.safety_sm = 0.9
+        self.safety_sm = 1.8
         # self.timing_sm = sys.argv[3]
         # self.safety_sm = sys.argv[4]
 
@@ -371,7 +371,7 @@ class PedCrossing :
             	    self.local_traj_duration = np.copy(tbc_ped)
 		    start_time = time.time()
 		    # poly_traj_generation
-		    time_shift = 0.5
+		    time_shift = 1.5
 	            action, pplan, xtraj, ytraj, xvel, yvel = PolyTrajGenerationY(time_shift,self.rob_pos, self.rob_vel, self.rob_intent, self.ped_pos, self.ped_vel, self.local_traj_duration, self.dt, time_, self.rob_reaction_time, self.max_accelx, self.max_accely, self.timing_sm, self.safety_sm, self.ped_goal, self.rob_goal, self.vh, self.vr, self.n_states)
 		    print 'x_traj = {}'.format(xtraj)
 		    print 'x_vel = {}'.format(xvel)
@@ -390,14 +390,15 @@ class PedCrossing :
 
 
                     self.poly_plan = pplan
-                    self.robot_time_del = 0#
-                    self.robot_poly_index = 0#
+                    #self.robot_time_del = 0#
+                    #self.robot_poly_index = 0#
 		    ratio = 1.1/max(self.Yvel[0:20])
 		    ratio =1.1/0.54
 		    vR_baseline = vR_ + vH_/ratio
 	    time_now = time.time()
-	    #if (time_now-start_time<self.local_traj_duration-1) and tbc_ped< self.rob_reaction_time:
-		#vR_ = vR_baseline
+	    if (time_now-start_time<self.local_traj_duration-0) and tbc_ped< self.rob_reaction_time:
+                vR_ = vR_*tbc_rob/(tbc_ped-self.safety_sm/self.vh)
+		#vR_ = vR_baseline#
 		
 			
 			    
